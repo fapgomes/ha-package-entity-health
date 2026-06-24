@@ -27,5 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - *Aviso: entidades com valor parado* and *Limpar aviso de entidades com valor
     parado* automations for notification create/dismiss.
   - `group.ignored_frozen_entities` and `ignored_from_frozen` label for exclusions.
+  - The detection logic is kept in a single place: the `entities` attribute is
+    the source of truth and the sensor `state` is derived from its length, so the
+    count and the list can never drift apart.
+- `LICENSE` (GNU GPL v3.0), `README.md`, `.gitignore`, and this changelog.
 
 [1.0.0]: https://github.com/fapgomes/ha-package-entity-health/releases/tag/v1.0.0

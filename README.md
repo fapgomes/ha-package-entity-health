@@ -78,3 +78,7 @@ The detection logic lives in `sensor.frozen_entities`:
 
 - Unavailable Entities sensor by [Jason Nader (jazzyisj)](https://github.com/jazzyisj/unavailable-entities-sensor).
 - Frozen Entities monitor and package assembly by [@fapgomes](https://github.com/fapgomes).
+
+## License
+
+Released under the [GNU General Public License v3.0](LICENSE).

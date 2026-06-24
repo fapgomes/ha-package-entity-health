@@ -46,28 +46,12 @@ template:
         unique_id: frozen_entities
         icon: "{{ iif(states(this.entity_id)|int(0) > 0, 'mdi:timer-alert-outline', 'mdi:timer-check-outline') }}"
         state_class: measurement
-        state: >
-          {% set default_limit = 21600 %}
-          {% set tight = {'voltage': 10800, 'frequency': 10800, 'power_factor': 10800} %}
-          {% set zero_skip = ['power','current','energy','apparent_power','reactive_power'] %}
-          {% set watched_sc = ['measurement','total','total_increasing'] %}
-          {% set ignore = state_attr('group.ignored_frozen_entities','entity_id') or [] %}
-          {% set ignore_lbl = label_entities('ignored_from_frozen') if 'ignored_from_frozen' in labels() else [] %}
-          {% set ns = namespace(n=0) %}
-          {% for s in states.sensor %}
-            {% set dc = s.attributes.get('device_class') %}
-            {% if s.attributes.get('state_class') in watched_sc
-                  and s.state not in ['unknown','unavailable','none','']
-                  and s.entity_id not in ignore
-                  and s.entity_id not in ignore_lbl
-                  and not (dc in zero_skip and s.state|float(-999) == 0) %}
-              {% set limit = tight.get(dc, default_limit) %}
-              {% if (now() - s.last_changed).total_seconds() > limit %}
-                {% set ns.n = ns.n + 1 %}
-              {% endif %}
-            {% endif %}
-          {% endfor %}
-          {{ ns.n }}
+        # Single source of truth: the detection runs once in the `entities`
+        # attribute below and the state is just its length. Using this.attributes
+        # reads the value rendered on the previous cycle, so the count lags the
+        # list by at most one render — negligible since this sensor re-renders
+        # whenever any sensor.* changes. Avoids duplicating the whole algorithm.
+        state: "{{ (this.attributes.entities | default([])) | count }}"
         attributes:
           entities: >
             {% set default_limit = 21600 %}

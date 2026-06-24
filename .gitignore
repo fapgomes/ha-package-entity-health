@@ -1,0 +1,9 @@
+# Editor / OS noise
+*.swp
+*~
+.DS_Store
+
+# Home Assistant runtime artefacts (in case this is edited in-place)
+*.log
+__pycache__/
+.storage/
