@@ -3,54 +3,54 @@
 ## DESCRIPTION: Two complementary monitors for entity health:
 ##   - Unavailable Entities (v2.4): count and list entities with state unknown/unavailable.
 ##     USAGE: https://github.com/jazzyisj/unavailable-entities-sensor/blob/main/README.md
-##   - Frozen (stuck-value) Entities (v1.1): deteta sensores cujo VALOR não muda há demasiado
-##     tempo (last_changed) — entidades "paradas" que continuam disponíveis. Expõe também
-##     group.frozen_entities (entity_ids) para usar em cards/auto-entities.
+##   - Frozen (stuck-value) Entities (v1.1): detects sensors whose VALUE hasn't changed for too
+##     long (last_changed) — "stuck" entities that are still available. Also exposes
+##     group.frozen_entities (entity_ids) for use in cards/auto-entities.
 ## REQUIREMENTS: Home Assistant v2024.8
 ##
-## NOTAS Frozen:
-##   PORQUÊ last_changed e não last_reported: integrações como o Zigbee2MQTT continuam a
-##     republicar valores antigos (ex.: o Aqara da bomba da piscina republica o tópico quando a
-##     temperatura muda), por isso o last_reported avança na mesma. Só a estagnação do VALOR
-##     denuncia a avaria.
-##   LIMITES por device_class (segundos): tensão/frequência variam sempre num medidor vivo, logo
-##     limite curto (3 h). O resto tem limite largo (6 h). Sensores a 0 (aparelho desligado) são
-##     ignorados para os tipos elétricos.
-##   IGNORAR uma entidade: junta-a ao group.ignored_frozen_entities OU aplica o label
-##     "ignored_from_frozen".
+## FROZEN NOTES:
+##   WHY last_changed and not last_reported: integrations such as Zigbee2MQTT keep re-publishing
+##     old values (e.g. the Aqara on the pool pump re-publishes its topic whenever the temperature
+##     changes), so last_reported advances anyway. Only the stagnation of the VALUE itself reveals
+##     the fault.
+##   LIMITS per device_class (seconds): voltage/frequency always vary on a live meter, so a shorter
+##     limit (10 h). Everything else uses a wider limit (12 h). Sensors at 0 (appliance off) are
+##     ignored for the electrical types.
+##   IGNORE an entity: add it to group.ignored_frozen_entities OR apply the
+##     "ignored_from_frozen" label.
 ###################################################################################################
 
 ###################################################################################################
-## CONFIG — parâmetros ajustáveis do monitor Frozen (e o serviço de notificação).
-## Estes helpers são o único sítio a editar. Mexes no `initial`, reinicias o HA e fica aplicado.
-## (Também dá para ajustar na UI, mas o valor volta ao `initial` daqui em cada reinício.)
-##   frozen_default_limit_hours  -> limite geral: quantas horas o VALOR pode ficar parado (6h)
-##   frozen_tight_limit_hours    -> limite curto p/ tensão/frequência/fator de potência (3h)
-##   frozen_notify_delay_minutes -> minutos com frozen>0 antes de notificar (15 min)
-##   frozen_notify_service       -> serviço de notificação (ex.: notify.calvin); vazio = só
-##                                  notificação persistente, sem notificação externa
+## CONFIG — tunable parameters for the Frozen monitor (and the notification service).
+## These helpers are the only place to edit. Change `initial`, restart HA and it applies.
+## (They can also be adjusted in the UI, but the value reverts to `initial` on every restart.)
+##   frozen_default_limit_hours  -> general limit: how many hours the VALUE may stay stuck (12h)
+##   frozen_tight_limit_hours    -> shorter limit for voltage/frequency/power_factor (10h)
+##   frozen_notify_delay_minutes -> minutes with frozen>0 before notifying (15 min)
+##   frozen_notify_service       -> notification service (e.g. notify.calvin); empty = only the
+##                                  persistent notification, no external notification
 ###################################################################################################
 input_number:
   frozen_default_limit_hours:
-    name: "Frozen: limite geral (horas)"
+    name: "Frozen: general limit (hours)"
     icon: mdi:timer-sand
-    initial: 6
+    initial: 12
     min: 0.5
     max: 72
     step: 0.5
     unit_of_measurement: h
     mode: box
   frozen_tight_limit_hours:
-    name: "Frozen: limite elétricos (horas)"
+    name: "Frozen: electrical limit (hours)"
     icon: mdi:timer-sand
-    initial: 3
+    initial: 10
     min: 0.5
     max: 48
     step: 0.5
     unit_of_measurement: h
     mode: box
   frozen_notify_delay_minutes:
-    name: "Frozen: atraso da notificação (min)"
+    name: "Frozen: notification delay (min)"
     icon: mdi:timer-cog-outline
     initial: 15
     min: 0
@@ -61,7 +61,7 @@ input_number:
 
 input_text:
   frozen_notify_service:
-    name: "Frozen: serviço de notificação"
+    name: "Frozen: notification service"
     icon: mdi:bell-cog-outline
     initial: notify.calvin
     max: 255
@@ -101,8 +101,8 @@ template:
         state: "{{ (this.attributes.entities | default([])) | count }}"
         attributes:
           entities: >
-            {% set default_limit = states('input_number.frozen_default_limit_hours')|float(6) * 3600 %}
-            {% set tlim = states('input_number.frozen_tight_limit_hours')|float(3) * 3600 %}
+            {% set default_limit = states('input_number.frozen_default_limit_hours')|float(12) * 3600 %}
+            {% set tlim = states('input_number.frozen_tight_limit_hours')|float(10) * 3600 %}
             {% set tight = {'voltage': tlim, 'frequency': tlim, 'power_factor': tlim} %}
             {% set zero_skip = ['power','current','energy','apparent_power','reactive_power'] %}
             {% set watched_sc = ['measurement','total','total_increasing'] %}
@@ -163,8 +163,8 @@ group:
       - person.mariadelmar
       - sensor.button_green1_payload
 
-  # Grupo de entidades a ignorar (frozen). Acrescenta aqui sensores que ficam legitimamente
-  # parados. Inclui os próprios contadores para não se auto-detetarem quando ficam a 0 muito tempo.
+  # Group of entities to ignore (frozen). Add here sensors that legitimately stay still.
+  # Includes the counters themselves so they don't self-detect when they sit at 0 for a long time.
   ignored_frozen_entities:
     name: Ignored Frozen Entities
     entities:
@@ -326,8 +326,8 @@ automation:
 
   # Frozen entities notifications
   - id: notify_frozen_entities
-    alias: "Aviso: entidades com valor parado"
-    description: "Notifica quando há sensores cujo valor não muda há demasiado tempo."
+    alias: "Frozen Entities Alert"
+    description: "Notify when sensors haven't changed their value for too long."
     mode: single
     max_exceeded: silent
     triggers:
@@ -347,7 +347,7 @@ automation:
           message: |
             Estes sensores não atualizam o valor há demasiado tempo:
             - {{ lista }}
-      # Notificação externa só se o serviço estiver definido (campo vazio = desligado).
+      # External notification only if the service is set (empty field = disabled).
       - if: "{{ notify_service not in ['', 'unknown', 'unavailable', 'none'] }}"
         then:
           - action: "{{ notify_service }}"
@@ -358,7 +358,8 @@ automation:
                 - {{ lista }}
 
   - id: clear_frozen_entities_notification
-    alias: "Limpar aviso de entidades com valor parado"
+    alias: "Clear Frozen Entities Alert"
+    description: "Dismiss the frozen entities notification when none remain."
     mode: single
     max_exceeded: silent
     triggers:

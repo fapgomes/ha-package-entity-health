@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-06-24
+
+### Changed
+
+- Translated the remaining Portuguese strings to English for consistency: the
+  frozen automation aliases (*Aviso: entidades com valor parado* → **Frozen
+  Entities Alert**, *Limpar aviso de entidades com valor parado* → **Clear
+  Frozen Entities Alert**), the input helper names, and the in-file comments
+  (header notes and CONFIG block). The user-facing notification text remains in
+  Portuguese.
+- Raised the default frozen thresholds: `frozen_default_limit_hours` 6 → **12**,
+  `frozen_tight_limit_hours` 3 → **10** (helper `initial` values and the template
+  fallbacks).
+
 ## [1.1.0] - 2026-06-24
 
 ### Added
@@ -57,5 +71,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     count and the list can never drift apart.
 - `LICENSE` (GNU GPL v3.0), `README.md`, `.gitignore`, and this changelog.
 
+[1.1.1]: https://github.com/fapgomes/ha-package-entity-health/releases/tag/v1.1.1
 [1.1.0]: https://github.com/fapgomes/ha-package-entity-health/releases/tag/v1.1.0
 [1.0.0]: https://github.com/fapgomes/ha-package-entity-health/releases/tag/v1.0.0

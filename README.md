@@ -54,8 +54,8 @@ Some integrations (e.g. Zigbee2MQTT) keep **re‑publishing old values**, so `la
 - **Update Unavailable Entities Group** — rebuilds `group.unavailable_entities` every minute (and on `group.reload`).
 - **Update Frozen Entities Group** — rebuilds `group.frozen_entities` every minute (and on `group.reload`) from `sensor.frozen_entities`.
 - **Unavailable Entities Notification** — creates/dismisses a persistent notification based on the count.
-- **Aviso: entidades com valor parado** — notifies when frozen entities are detected for the configured delay (default 15 min): always a persistent notification, plus the notify service configured in `input_text.frozen_notify_service`.
-- **Limpar aviso de entidades com valor parado** — dismisses the frozen notification once the count returns to zero (after 5 min).
+- **Frozen Entities Alert** — notifies when frozen entities are detected for the configured delay (default 15 min): always a persistent notification, plus the notify service configured in `input_text.frozen_notify_service`. (Notification text is in Portuguese.)
+- **Clear Frozen Entities Alert** — dismisses the frozen notification once the count returns to zero (after 5 min).
 
 ## How it works — timing
 
@@ -68,15 +68,15 @@ Some integrations (e.g. Zigbee2MQTT) keep **re‑publishing old values**, so `la
 There are three timing layers, so a frozen sensor doesn't appear instantly — that's by design:
 
 1. **Detection threshold** — measured from the last time the *value* changed (`last_changed`):
-   - **General limit:** 6 h by default (`frozen_default_limit_hours`).
-   - **Tight limit:** 3 h by default (`frozen_tight_limit_hours`) for `voltage`, `frequency`, `power_factor` — these always vary on a live meter, so a short window is enough.
+   - **General limit:** 12 h by default (`frozen_default_limit_hours`).
+   - **Tight limit:** 10 h by default (`frozen_tight_limit_hours`) for `voltage`, `frequency`, `power_factor` — these always vary on a live meter, so a shorter window is enough.
    - Electrical sensors (`power`, `current`, `energy`, `apparent_power`, `reactive_power`) reading `0` are **ignored** (the appliance is simply off).
    - Only `measurement`, `total`, `total_increasing` state classes are watched.
 2. **`sensor.frozen_entities` / list** — updates within seconds of crossing the threshold (it re-renders whenever any `sensor.*` changes).
 3. **`group.frozen_entities` / cards** — rebuilt **once per minute**, so up to ~1 min behind the list.
 4. **Notification** — fires only after the count has been `> 0` for `frozen_notify_delay_minutes` straight (default 15 min).
 
-So for a normal sensor: ~**6 h** stuck → in the list within seconds, in the group/card within ~1 min, notification ~15 min later. For the electrical classes it's **3 h** instead of 6 h.
+So for a normal sensor: ~**12 h** stuck → in the list within seconds, in the group/card within ~1 min, notification ~15 min later. For the electrical classes it's **10 h** instead of 12 h.
 
 > **`group.frozen_entities` shows `unknown` when there is nothing frozen** — that's the normal, healthy state of an empty group (same as `group.unavailable_entities` when nothing is unavailable). It populates as soon as a sensor crosses the threshold. Use the count `sensor.frozen_entities` (`0` when healthy) for display.
 
@@ -86,8 +86,8 @@ All tunable parameters are **input helpers defined at the top of `package_entity
 
 | Helper | Default | Purpose |
 | --- | --- | --- |
-| `input_number.frozen_default_limit_hours` | `6` | General "stuck for too long" threshold, in hours. |
-| `input_number.frozen_tight_limit_hours` | `3` | Tighter threshold for `voltage` / `frequency` / `power_factor`. |
+| `input_number.frozen_default_limit_hours` | `12` | General "stuck for too long" threshold, in hours. |
+| `input_number.frozen_tight_limit_hours` | `10` | Tighter threshold for `voltage` / `frequency` / `power_factor`. |
 | `input_number.frozen_notify_delay_minutes` | `15` | Minutes the count must stay `> 0` before notifying. |
 | `input_text.frozen_notify_service` | `notify.calvin` | Notify service for the external alert. **Leave empty to send only the persistent notification.** Change it to your own service (e.g. `notify.mobile_app_xxx`). |
 
