@@ -5,6 +5,31 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-06-24
+
+### Added
+
+- `group.frozen_entities` — a real group of the frozen sensors' raw entity ids,
+  so they can be used in cards and `auto-entities` just like
+  `group.unavailable_entities`.
+- *Update Frozen Entities Group* automation — rebuilds the group every minute
+  (and on `group.reload`).
+- `entity_ids` attribute on `sensor.frozen_entities` — the raw ids (age suffix
+  stripped) that feed the group. Derived from the existing `entities` list, so
+  the detection still runs only once.
+- Configuration via input helpers at the top of the package, replacing the
+  hard-coded values:
+  - `input_number.frozen_default_limit_hours` (default 6),
+    `input_number.frozen_tight_limit_hours` (default 3),
+    `input_number.frozen_notify_delay_minutes` (default 15),
+    `input_text.frozen_notify_service` (default `notify.calvin`).
+
+### Changed
+
+- The frozen notification's external service is now read from
+  `input_text.frozen_notify_service` instead of a hard-coded `notify.calvin`,
+  and is skipped entirely when that field is empty.
+
 ## [1.0.0] - 2026-06-24
 
 ### Added
@@ -32,4 +57,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     count and the list can never drift apart.
 - `LICENSE` (GNU GPL v3.0), `README.md`, `.gitignore`, and this changelog.
 
+[1.1.0]: https://github.com/fapgomes/ha-package-entity-health/releases/tag/v1.1.0
 [1.0.0]: https://github.com/fapgomes/ha-package-entity-health/releases/tag/v1.0.0
