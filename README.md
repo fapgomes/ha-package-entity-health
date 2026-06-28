@@ -5,7 +5,7 @@ A single Home Assistant [package](https://www.home-assistant.io/docs/configurati
 | Monitor | Version | What it detects |
 | --- | --- | --- |
 | **Unavailable Entities** | v2.4 | Entities whose state is `unknown` / `unavailable`. |
-| **Frozen (stuck‑value) Entities** | v1.1 | Sensors that are still *available* but whose **value** hasn't changed for too long. |
+| **Frozen (stuck‑value) Entities** | v1.1 | Sensors that are still *available* but whose **value** hasn't changed for too long (MQTT excluded). |
 
 The Unavailable Entities part is based on [jazzyisj/unavailable-entities-sensor](https://github.com/jazzyisj/unavailable-entities-sensor). The Frozen Entities part is original to this package.
 
@@ -21,9 +21,19 @@ An entity can be broken in two different ways:
 1. **It goes `unavailable`** — the integration lost it. → *Unavailable Entities*.
 2. **It stays available but stops updating its value** — the worst kind, because nothing looks wrong at a glance. → *Frozen Entities*.
 
-### Why `last_changed` and not `last_reported` for frozen detection?
+### Why `last_changed` (and not `last_reported`)?
 
-Some integrations (e.g. Zigbee2MQTT) keep **re‑publishing old values**, so `last_reported` keeps advancing even when the underlying device is stuck. For example, the Aqara sensor on the pool pump re‑publishes its topic whenever the temperature changes, so `last_reported` moves even if the sensor's own value is frozen. Only the stagnation of the **value itself** (`last_changed`) reveals the fault.
+The Frozen monitor measures stagnation with `last_changed` — the last time the **value** actually changed.
+
+`last_reported` looks tempting (it should advance on every report, even unchanged), but it **does not help here**: the MQTT integration silently **discards identical payloads**, so `last_reported` never advances on a repeated value and collapses onto `last_changed` ([home-assistant/core#121978](https://github.com/home-assistant/core/issues/121978), closed as *not planned*; only `force_update: true` avoids it). So for MQTT the choice makes no difference, and `last_changed` is the honest metric for a stuck value.
+
+### MQTT is excluded from frozen detection
+
+All MQTT entities (incl. **Zigbee2MQTT**) are skipped via `integration_entities('mqtt')`. For these, timestamps cannot distinguish *"alive but stable"* from *"stopped reporting"* (battery %, energy on an idle plug, stable voltage all look frozen), so they only produce false positives. A genuinely **dead** MQTT/Z2M device is already caught by the *Unavailable* monitor through its availability/LWT topic.
+
+#### Watching a specific MQTT sensor anyway
+
+Sometimes one value *must* keep moving while the device stays alive — e.g. a heat‑pump's **current power**, where a frozen reading is a real fault. Add that entity to `group.watched_frozen_entities` **or** apply the `watched_frozen` label, and it is monitored despite being MQTT. This works because stuck‑value detection uses `last_changed`: a repeated identical value freezes `last_changed` and gets flagged. (Naturally‑static sensors like battery still belong in the excluded set — only put genuinely should‑always‑vary sensors on the watchlist.)
 
 ## Installation
 
@@ -97,7 +107,7 @@ The non‑tunable structural lists (`zero_skip`, watched state classes) stay inl
 
 **Unavailable** — add the entity to `group.ignored_entities`, apply the `ignored_from_unavailable` label, or apply it to a device. Many noisy entity patterns (robot‑vacuum config selects, kiosk/tablet sensors, Frigate, etc.) are already filtered by `rejectattr` rules in the update automation.
 
-**Frozen** — add the entity to `group.ignored_frozen_entities` **or** apply the `ignored_from_frozen` label.
+**Frozen** — all MQTT entities are excluded automatically (see above); to force one back in, add it to `group.watched_frozen_entities` or apply the `watched_frozen` label. For non‑MQTT noise, add the entity to `group.ignored_frozen_entities` **or** apply the `ignored_from_frozen` label.
 
 ## Credits
 

@@ -9,10 +9,19 @@
 ## REQUIREMENTS: Home Assistant v2024.8
 ##
 ## FROZEN NOTES:
-##   WHY last_changed and not last_reported: integrations such as Zigbee2MQTT keep re-publishing
-##     old values (e.g. the Aqara on the pool pump re-publishes its topic whenever the temperature
-##     changes), so last_reported advances anyway. Only the stagnation of the VALUE itself reveals
-##     the fault.
+##   WHY last_changed (and not last_reported): MQTT entities (incl. Zigbee2MQTT) silently DISCARD
+##     identical payloads, so last_reported never advances on a repeated value — it collapses onto
+##     last_changed (HA core issue #121978, closed as "not planned"; only force_update:true avoids
+##     it). So for MQTT the timestamp choice makes no difference; last_changed is the honest metric
+##     for a stuck VALUE.
+##   MQTT IS EXCLUDED from frozen detection (integration_entities('mqtt')): timestamps cannot tell
+##     "alive but stable" from "stopped reporting" for these, so they only produce false positives
+##     (battery %, energy on an idle plug, stable voltage). A genuinely dead MQTT/Z2M device is
+##     already caught by the Unavailable monitor via its availability/LWT topic.
+##   WATCHLIST override: to monitor a specific MQTT sensor whose VALUE must keep moving while the
+##     device is alive (e.g. the pool heat-pump current power), add it to
+##     group.watched_frozen_entities OR apply the "watched_frozen" label. Stuck-value detection via
+##     last_changed works on MQTT: a repeated identical value freezes last_changed and is flagged.
 ##   LIMITS per device_class (seconds): voltage/frequency always vary on a live meter, so a shorter
 ##     limit (10 h). Everything else uses a wider limit (12 h). Sensors at 0 (appliance off) are
 ##     ignored for the electrical types.
@@ -108,6 +117,9 @@ template:
             {% set watched_sc = ['measurement','total','total_increasing'] %}
             {% set ignore = state_attr('group.ignored_frozen_entities','entity_id') or [] %}
             {% set ignore_lbl = label_entities('ignored_from_frozen') if 'ignored_from_frozen' in labels() else [] %}
+            {% set ignore_mqtt = integration_entities('mqtt') %}
+            {% set watch = (state_attr('group.watched_frozen_entities','entity_id') or [])
+                           + (label_entities('watched_frozen') if 'watched_frozen' in labels() else []) %}
             {% set ns = namespace(items=[]) %}
             {% for s in states.sensor %}
               {% set dc = s.attributes.get('device_class') %}
@@ -115,6 +127,7 @@ template:
                     and s.state not in ['unknown','unavailable','none','']
                     and s.entity_id not in ignore
                     and s.entity_id not in ignore_lbl
+                    and (s.entity_id not in ignore_mqtt or s.entity_id in watch)
                     and not (dc in zero_skip and s.state|float(-999) == 0) %}
                 {% set limit = tight.get(dc, default_limit) %}
                 {% set age = (now() - s.last_changed).total_seconds() %}
@@ -171,6 +184,14 @@ group:
       - sensor.frozen_entities
       - sensor.unavailable_entities
       - sensor.disabled_device_entities
+
+  # MQTT entities are excluded from frozen detection by default (identical payloads are discarded,
+  # so timestamps can't tell "alive but stable" from "stuck"). Add an MQTT entity HERE (or apply
+  # the `watched_frozen` label) to force it back IN — for sensors whose VALUE must keep moving while
+  # the device is alive (e.g. the pool heat-pump current power that once got stuck).
+  watched_frozen_entities:
+    name: Watched Frozen Entities
+    entities: []
 
 automation:
   #REQUIRED - Create and update the monitored entities group. Updates once per minute.
