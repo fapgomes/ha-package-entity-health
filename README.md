@@ -5,7 +5,7 @@ A single Home Assistant [package](https://www.home-assistant.io/docs/configurati
 | Monitor | Version | What it detects |
 | --- | --- | --- |
 | **Unavailable Entities** | v2.4 | Entities whose state is `unknown` / `unavailable`. |
-| **Frozen (stuck‑value) Entities** | v1.1 | Hand‑picked sensors (opt‑in watchlist) that are still *available* but whose **value** hasn't changed for too long. |
+| **Frozen (stuck‑value) Entities** | v1.2 | Hand‑picked sensors (opt‑in watchlist) that are still *available* but whose **value** hasn't changed for too long. |
 
 The Unavailable Entities part is based on [jazzyisj/unavailable-entities-sensor](https://github.com/jazzyisj/unavailable-entities-sensor). The Frozen Entities part is original to this package.
 

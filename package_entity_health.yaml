@@ -1,9 +1,9 @@
 ###################################################################################################
-## PACKAGE: Entity Health (Unavailable + Frozen) v1.1
+## PACKAGE: Entity Health (Unavailable + Frozen) v1.2
 ## DESCRIPTION: Two complementary monitors for entity health:
 ##   - Unavailable Entities (v2.4): count and list entities with state unknown/unavailable.
 ##     USAGE: https://github.com/jazzyisj/unavailable-entities-sensor/blob/main/README.md
-##   - Frozen (stuck-value) Entities (v1.1): detects sensors whose VALUE hasn't changed for too
+##   - Frozen (stuck-value) Entities (v1.2): detects sensors whose VALUE hasn't changed for too
 ##     long (last_changed) — "stuck" entities that are still available. OPT-IN: only the entities
 ##     you put on the watchlist are checked. Also exposes group.frozen_entities (entity_ids) for
 ##     use in cards/auto-entities.

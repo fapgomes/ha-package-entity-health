@@ -5,6 +5,34 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-06-29
+
+### Changed
+
+- **Frozen detection is now opt-in.** Detecting a "frozen" value from a
+  timestamp cannot distinguish a real fault from a sensor that is naturally
+  static (battery %, an idle plug's energy total, cloud precipitation at 0 mm,
+  entity counters, a vacuum's lifetime totals…), so scanning every sensor only
+  produced false positives. `sensor.frozen_entities` now checks **only** the
+  entities you explicitly list, instead of iterating over all `states.sensor`.
+  A genuinely dead device is still caught by the *Unavailable* monitor.
+- Kept `last_changed` as the stuck-value metric. `last_reported` does not help:
+  the MQTT integration discards identical payloads, so it never advances on a
+  repeated value and collapses onto `last_changed`
+  ([home-assistant/core#121978](https://github.com/home-assistant/core/issues/121978)).
+
+### Added
+
+- `group.watched_frozen_entities` and the `watched_frozen` label — the opt-in
+  watchlist that is now the only source for frozen detection.
+
+### Removed
+
+- `group.ignored_frozen_entities` and the `ignored_from_frozen` label — no longer
+  needed under the opt-in model (just don't add an entity to the watchlist).
+- The automatic scan of all sensors, the `state_class` filter, and the
+  intermediate MQTT exclusion (`integration_entities('mqtt')`).
+
 ## [1.1.1] - 2026-06-24
 
 ### Changed
@@ -71,6 +99,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     count and the list can never drift apart.
 - `LICENSE` (GNU GPL v3.0), `README.md`, `.gitignore`, and this changelog.
 
+[1.2.0]: https://github.com/fapgomes/ha-package-entity-health/releases/tag/v1.2.0
 [1.1.1]: https://github.com/fapgomes/ha-package-entity-health/releases/tag/v1.1.1
 [1.1.0]: https://github.com/fapgomes/ha-package-entity-health/releases/tag/v1.1.0
 [1.0.0]: https://github.com/fapgomes/ha-package-entity-health/releases/tag/v1.0.0
