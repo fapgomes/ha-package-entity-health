@@ -4,29 +4,25 @@
 ##   - Unavailable Entities (v2.4): count and list entities with state unknown/unavailable.
 ##     USAGE: https://github.com/jazzyisj/unavailable-entities-sensor/blob/main/README.md
 ##   - Frozen (stuck-value) Entities (v1.1): detects sensors whose VALUE hasn't changed for too
-##     long (last_changed) — "stuck" entities that are still available. Also exposes
-##     group.frozen_entities (entity_ids) for use in cards/auto-entities.
+##     long (last_changed) — "stuck" entities that are still available. OPT-IN: only the entities
+##     you put on the watchlist are checked. Also exposes group.frozen_entities (entity_ids) for
+##     use in cards/auto-entities.
 ## REQUIREMENTS: Home Assistant v2024.8
 ##
 ## FROZEN NOTES:
+##   OPT-IN by design: frozen-by-timestamp cannot tell a faulty stuck value from a naturally-static
+##     one (battery %, idle-plug energy, cloud precipitation, entity counters, vacuum totals…), so
+##     scanning every sensor only produces false positives. Instead we monitor ONLY what you declare
+##     as "this must keep moving": add the entity to group.watched_frozen_entities OR apply the
+##     "watched_frozen" label. A genuinely dead device still surfaces in the Unavailable monitor.
 ##   WHY last_changed (and not last_reported): MQTT entities (incl. Zigbee2MQTT) silently DISCARD
 ##     identical payloads, so last_reported never advances on a repeated value — it collapses onto
 ##     last_changed (HA core issue #121978, closed as "not planned"; only force_update:true avoids
-##     it). So for MQTT the timestamp choice makes no difference; last_changed is the honest metric
-##     for a stuck VALUE.
-##   MQTT IS EXCLUDED from frozen detection (integration_entities('mqtt')): timestamps cannot tell
-##     "alive but stable" from "stopped reporting" for these, so they only produce false positives
-##     (battery %, energy on an idle plug, stable voltage). A genuinely dead MQTT/Z2M device is
-##     already caught by the Unavailable monitor via its availability/LWT topic.
-##   WATCHLIST override: to monitor a specific MQTT sensor whose VALUE must keep moving while the
-##     device is alive (e.g. the pool heat-pump current power), add it to
-##     group.watched_frozen_entities OR apply the "watched_frozen" label. Stuck-value detection via
-##     last_changed works on MQTT: a repeated identical value freezes last_changed and is flagged.
-##   LIMITS per device_class (seconds): voltage/frequency always vary on a live meter, so a shorter
-##     limit (10 h). Everything else uses a wider limit (12 h). Sensors at 0 (appliance off) are
-##     ignored for the electrical types.
-##   IGNORE an entity: add it to group.ignored_frozen_entities OR apply the
-##     "ignored_from_frozen" label.
+##     it). last_changed is the honest metric for a stuck VALUE and works even on MQTT: a repeated
+##     identical value freezes last_changed and is flagged.
+##   LIMITS per device_class (seconds): voltage/frequency/power_factor use a shorter limit (10 h);
+##     everything else uses the wider limit (12 h). Watched sensors at 0 (appliance off) are skipped
+##     for the electrical device classes.
 ###################################################################################################
 
 ###################################################################################################
@@ -105,34 +101,31 @@ template:
         # Single source of truth: the detection runs once in the `entities`
         # attribute below and the state is just its length. Using this.attributes
         # reads the value rendered on the previous cycle, so the count lags the
-        # list by at most one render — negligible since this sensor re-renders
-        # whenever any sensor.* changes. Avoids duplicating the whole algorithm.
+        # list by at most one render — negligible. The list re-renders whenever a
+        # watched entity changes and once a minute (now()). Avoids duplicating the algorithm.
         state: "{{ (this.attributes.entities | default([])) | count }}"
         attributes:
+          # OPT-IN: only entities on the watchlist are checked — frozen-by-timestamp
+          # cannot tell a faulty stuck value from a naturally-static one, so we monitor
+          # only what the user explicitly declares as "this must keep moving".
           entities: >
             {% set default_limit = states('input_number.frozen_default_limit_hours')|float(12) * 3600 %}
             {% set tlim = states('input_number.frozen_tight_limit_hours')|float(10) * 3600 %}
             {% set tight = {'voltage': tlim, 'frequency': tlim, 'power_factor': tlim} %}
             {% set zero_skip = ['power','current','energy','apparent_power','reactive_power'] %}
-            {% set watched_sc = ['measurement','total','total_increasing'] %}
-            {% set ignore = state_attr('group.ignored_frozen_entities','entity_id') or [] %}
-            {% set ignore_lbl = label_entities('ignored_from_frozen') if 'ignored_from_frozen' in labels() else [] %}
-            {% set ignore_mqtt = integration_entities('mqtt') %}
             {% set watch = (state_attr('group.watched_frozen_entities','entity_id') or [])
                            + (label_entities('watched_frozen') if 'watched_frozen' in labels() else []) %}
             {% set ns = namespace(items=[]) %}
-            {% for s in states.sensor %}
-              {% set dc = s.attributes.get('device_class') %}
-              {% if s.attributes.get('state_class') in watched_sc
-                    and s.state not in ['unknown','unavailable','none','']
-                    and s.entity_id not in ignore
-                    and s.entity_id not in ignore_lbl
-                    and (s.entity_id not in ignore_mqtt or s.entity_id in watch)
-                    and not (dc in zero_skip and s.state|float(-999) == 0) %}
-                {% set limit = tight.get(dc, default_limit) %}
-                {% set age = (now() - s.last_changed).total_seconds() %}
-                {% if age > limit %}
-                  {% set ns.items = ns.items + ['%s (%.1fh)' | format(s.entity_id, age/3600)] %}
+            {% for eid in watch | unique %}
+              {% set s = states[eid] %}
+              {% if s is not none and s.state not in ['unknown','unavailable','none',''] %}
+                {% set dc = s.attributes.get('device_class') %}
+                {% if not (dc in zero_skip and s.state|float(-999) == 0) %}
+                  {% set limit = tight.get(dc, default_limit) %}
+                  {% set age = (now() - s.last_changed).total_seconds() %}
+                  {% if age > limit %}
+                    {% set ns.items = ns.items + ['%s (%.1fh)' | format(s.entity_id, age/3600)] %}
+                  {% endif %}
                 {% endif %}
               {% endif %}
             {% endfor %}
@@ -176,19 +169,12 @@ group:
       - person.mariadelmar
       - sensor.button_green1_payload
 
-  # Group of entities to ignore (frozen). Add here sensors that legitimately stay still.
-  # Includes the counters themselves so they don't self-detect when they sit at 0 for a long time.
-  ignored_frozen_entities:
-    name: Ignored Frozen Entities
-    entities:
-      - sensor.frozen_entities
-      - sensor.unavailable_entities
-      - sensor.disabled_device_entities
-
-  # MQTT entities are excluded from frozen detection by default (identical payloads are discarded,
-  # so timestamps can't tell "alive but stable" from "stuck"). Add an MQTT entity HERE (or apply
-  # the `watched_frozen` label) to force it back IN — for sensors whose VALUE must keep moving while
-  # the device is alive (e.g. the pool heat-pump current power that once got stuck).
+  # WATCHLIST — the ONLY source for frozen detection (opt-in). List here the sensors whose VALUE
+  # must keep moving while the device is alive (e.g. the pool heat-pump current power that once got
+  # stuck). Anything not listed here (or labelled `watched_frozen`) is never flagged. This avoids
+  # the false positives from naturally-static sensors (battery, idle-plug energy, cloud
+  # precipitation, entity counters, vacuum totals…). A genuinely dead device still shows up in the
+  # Unavailable monitor.
   watched_frozen_entities:
     name: Watched Frozen Entities
     entities: []

@@ -5,7 +5,7 @@ A single Home Assistant [package](https://www.home-assistant.io/docs/configurati
 | Monitor | Version | What it detects |
 | --- | --- | --- |
 | **Unavailable Entities** | v2.4 | Entities whose state is `unknown` / `unavailable`. |
-| **Frozen (stuck‑value) Entities** | v1.1 | Sensors that are still *available* but whose **value** hasn't changed for too long (MQTT excluded). |
+| **Frozen (stuck‑value) Entities** | v1.1 | Hand‑picked sensors (opt‑in watchlist) that are still *available* but whose **value** hasn't changed for too long. |
 
 The Unavailable Entities part is based on [jazzyisj/unavailable-entities-sensor](https://github.com/jazzyisj/unavailable-entities-sensor). The Frozen Entities part is original to this package.
 
@@ -21,19 +21,17 @@ An entity can be broken in two different ways:
 1. **It goes `unavailable`** — the integration lost it. → *Unavailable Entities*.
 2. **It stays available but stops updating its value** — the worst kind, because nothing looks wrong at a glance. → *Frozen Entities*.
 
+### Frozen is opt‑in (a watchlist)
+
+Detecting "frozen" from a timestamp has a hard limit: **it cannot tell a faulty stuck value from a naturally‑static one.** A battery at 84 %, an idle plug's energy total, cloud precipitation at 0 mm, an entity‑counter, a vacuum's lifetime total — all sit unchanged for hours by design and look identical to a genuine fault. Scanning every sensor therefore produces mostly false positives, and excluding them class‑by‑class is endless whack‑a‑mole.
+
+So the Frozen monitor is **opt‑in**: it checks **only** the entities you explicitly declare as *"this must keep moving"*. Add an entity to `group.watched_frozen_entities` **or** apply the `watched_frozen` label. Nothing else is ever flagged.
+
+> A genuinely **dead** device (no longer reporting at all) is a different failure and is already caught by the *Unavailable* monitor — e.g. Zigbee2MQTT marks the entity `unavailable` via its availability/LWT topic.
+
 ### Why `last_changed` (and not `last_reported`)?
 
-The Frozen monitor measures stagnation with `last_changed` — the last time the **value** actually changed.
-
-`last_reported` looks tempting (it should advance on every report, even unchanged), but it **does not help here**: the MQTT integration silently **discards identical payloads**, so `last_reported` never advances on a repeated value and collapses onto `last_changed` ([home-assistant/core#121978](https://github.com/home-assistant/core/issues/121978), closed as *not planned*; only `force_update: true` avoids it). So for MQTT the choice makes no difference, and `last_changed` is the honest metric for a stuck value.
-
-### MQTT is excluded from frozen detection
-
-All MQTT entities (incl. **Zigbee2MQTT**) are skipped via `integration_entities('mqtt')`. For these, timestamps cannot distinguish *"alive but stable"* from *"stopped reporting"* (battery %, energy on an idle plug, stable voltage all look frozen), so they only produce false positives. A genuinely **dead** MQTT/Z2M device is already caught by the *Unavailable* monitor through its availability/LWT topic.
-
-#### Watching a specific MQTT sensor anyway
-
-Sometimes one value *must* keep moving while the device stays alive — e.g. a heat‑pump's **current power**, where a frozen reading is a real fault. Add that entity to `group.watched_frozen_entities` **or** apply the `watched_frozen` label, and it is monitored despite being MQTT. This works because stuck‑value detection uses `last_changed`: a repeated identical value freezes `last_changed` and gets flagged. (Naturally‑static sensors like battery still belong in the excluded set — only put genuinely should‑always‑vary sensors on the watchlist.)
+Stagnation is measured with `last_changed` — the last time the **value** actually changed. `last_reported` looks tempting (it should advance on every report, even unchanged), but it **does not help**: the MQTT integration silently **discards identical payloads**, so `last_reported` never advances on a repeated value and collapses onto `last_changed` ([home-assistant/core#121978](https://github.com/home-assistant/core/issues/121978), closed as *not planned*; only `force_update: true` avoids it). `last_changed` is the honest metric for a stuck value and works even on MQTT — a repeated identical value freezes `last_changed` and gets flagged.
 
 ## Installation
 
@@ -57,7 +55,7 @@ Sometimes one value *must* keep moving while the device stays alive — e.g. a h
 | `group.unavailable_entities` | group | Live group of unavailable entities, rebuilt once per minute. |
 | `group.frozen_entities` | group | Live group of frozen sensors (raw entity_ids), rebuilt once per minute — use this in cards / `auto-entities`. |
 | `group.ignored_entities` | group | Entities to exclude from *unavailable* detection. |
-| `group.ignored_frozen_entities` | group | Entities to exclude from *frozen* detection. |
+| `group.watched_frozen_entities` | group | The **opt‑in watchlist** — the only entities checked for *frozen* detection. |
 
 ### Automations
 
@@ -75,14 +73,13 @@ Sometimes one value *must* keep moving while the device stays alive — e.g. a h
 
 ### Frozen
 
-There are three timing layers, so a frozen sensor doesn't appear instantly — that's by design:
+Only the entities on the watchlist are considered. There are then several timing layers, so a frozen sensor doesn't appear instantly — that's by design:
 
 1. **Detection threshold** — measured from the last time the *value* changed (`last_changed`):
    - **General limit:** 12 h by default (`frozen_default_limit_hours`).
    - **Tight limit:** 10 h by default (`frozen_tight_limit_hours`) for `voltage`, `frequency`, `power_factor` — these always vary on a live meter, so a shorter window is enough.
-   - Electrical sensors (`power`, `current`, `energy`, `apparent_power`, `reactive_power`) reading `0` are **ignored** (the appliance is simply off).
-   - Only `measurement`, `total`, `total_increasing` state classes are watched.
-2. **`sensor.frozen_entities` / list** — updates within seconds of crossing the threshold (it re-renders whenever any `sensor.*` changes).
+   - Watched electrical sensors (`power`, `current`, `energy`, `apparent_power`, `reactive_power`) reading `0` are **ignored** (the appliance is simply off).
+2. **`sensor.frozen_entities` / list** — updates within seconds of crossing the threshold (it re-renders when a watched entity changes, and once a minute via `now()`).
 3. **`group.frozen_entities` / cards** — rebuilt **once per minute**, so up to ~1 min behind the list.
 4. **Notification** — fires only after the count has been `> 0` for `frozen_notify_delay_minutes` straight (default 15 min).
 
@@ -101,13 +98,13 @@ All tunable parameters are **input helpers defined at the top of `package_entity
 | `input_number.frozen_notify_delay_minutes` | `15` | Minutes the count must stay `> 0` before notifying. |
 | `input_text.frozen_notify_service` | `notify.calvin` | Notify service for the external alert. **Leave empty to send only the persistent notification.** Change it to your own service (e.g. `notify.mobile_app_xxx`). |
 
-The non‑tunable structural lists (`zero_skip`, watched state classes) stay inline in `sensor.frozen_entities`.
+The non‑tunable structural list (`zero_skip`) stays inline in `sensor.frozen_entities`.
 
-### Ignoring entities
+### Choosing what to monitor
 
-**Unavailable** — add the entity to `group.ignored_entities`, apply the `ignored_from_unavailable` label, or apply it to a device. Many noisy entity patterns (robot‑vacuum config selects, kiosk/tablet sensors, Frigate, etc.) are already filtered by `rejectattr` rules in the update automation.
+**Unavailable** (exclude noise) — add the entity to `group.ignored_entities`, apply the `ignored_from_unavailable` label, or apply it to a device. Many noisy entity patterns (robot‑vacuum config selects, kiosk/tablet sensors, Frigate, etc.) are already filtered by `rejectattr` rules in the update automation.
 
-**Frozen** — all MQTT entities are excluded automatically (see above); to force one back in, add it to `group.watched_frozen_entities` or apply the `watched_frozen` label. For non‑MQTT noise, add the entity to `group.ignored_frozen_entities` **or** apply the `ignored_from_frozen` label.
+**Frozen** (opt‑in) — add the sensors you want watched to `group.watched_frozen_entities` **or** apply the `watched_frozen` label. Nothing is checked until you list it. Pick only sensors whose value should keep changing while the device is alive (e.g. a heat‑pump's current power); don't add naturally‑static ones (battery, lifetime totals, cloud values).
 
 ## Credits
 
