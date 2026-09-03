@@ -111,6 +111,12 @@ The non‑tunable structural list (`zero_skip`) stays inline in `sensor.frozen_e
 - Unavailable Entities sensor by [Jason Nader (jazzyisj)](https://github.com/jazzyisj/unavailable-entities-sensor).
 - Frozen Entities monitor and package assembly by [@fapgomes](https://github.com/fapgomes).
 
+## Support the project
+
+If this project is useful to you, consider buying me a coffee to help keep it going:
+
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-fapgomes-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/fapgomes)
+
 ## License
 
 Released under the [GNU General Public License v3.0](LICENSE).
